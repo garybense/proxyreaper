@@ -24,6 +24,8 @@ Supported --file formats:
   socks5://... | (Socks5)host:port:user:pass
 
 Run with --help for full usage.
+
+-gspilz
 """
 
 from __future__ import annotations
@@ -87,7 +89,7 @@ _ANSI_BANNER = r"""
 
 _ANSI_COLORS = [
     "\033[38;5;196m",  # red
-    "\033[38;5;226m",  # yellow
+    "\033[38;5;210m",  # yellow
     "\033[38;5;46m",   # green
     "\033[38;5;51m",   # cyan
     "\033[38;5;201m",  # magenta
@@ -104,8 +106,8 @@ def render_banner() -> str:
         else:
             out.append(line)
     footer = (
-        f"\033[1m\033[38;5;51mFast multi-protocol proxy harvester + OB2 syncer\033[0m\n"
-        f"\033[1m\033[38;5;46mUsage: python3 proxyreaper.py --help\033[0m"
+        f"\033[1m\033[38;5;196mFast multi-protocol proxy harvester + OB2 syncer\033[0m\n"
+        f"\033[1m\033[38;5;210mUsage: python3 proxyreaper.py --help\033[0m"
     )
     return "\n".join(out) + "\n" + footer
 
@@ -778,7 +780,7 @@ def test_tcp_batch(
                     flush=True,
                 )
     print()
-    log(f"TCP open: {len(alive)}/{len(proxies)} ({100*len(alive)/max(1,len(alive)):.0f}%)")
+    log(f"TCP open: {len(alive)}/{len(proxies)} ({100*len(alive)/max(1,len(proxies)):.0f}%)")
     return alive
 
 
@@ -807,7 +809,7 @@ def test_http_proxy(
             "code": r.status_code,
         }
     except requests.exceptions.InvalidSchema:
-        return {"proxy": proxy, "status": "FAILED", "error": "MISSING_PYSOCKS"}
+        return {"proxy": proxy, "status": "FAILED", "error": "MISSING_PYSOCKS (install: pip install pysocks)"}
     except Exception as e:
         return {"proxy": proxy, "status": "FAILED", "error": str(e)[:80]}
 
@@ -993,23 +995,33 @@ def run_ob2_validate(
 
 # ── main ──────────────────────────────────────────────────────────
 
+def validate_url(url_str: str) -> str:
+    """Validate that a string is a properly formatted URL. Raises argparse.ArgumentTypeError if invalid."""
+    url_str = url_str.strip()
+    if not url_str:
+        raise argparse.ArgumentTypeError("--check-url cannot be empty")
+    if not url_str.startswith(("http://", "https://")):
+        raise argparse.ArgumentTypeError(
+            f"--check-url must start with http:// or https:// (got: {url_str!r})"
+        )
+    # Basic URL structure check
+    try:
+        from urllib.parse import urlparse
+        parsed = urlparse(url_str)
+        if not parsed.netloc:
+            raise argparse.ArgumentTypeError(
+                f"--check-url has no hostname (got: {url_str!r})"
+            )
+    except argparse.ArgumentTypeError:
+        raise
+    except Exception as e:
+        raise argparse.ArgumentTypeError(f"Invalid --check-url: {e}")
+    return url_str
+
+
 def main() -> None:
     show_banner()
-    
-    # If no arguments provided, show help and exit
-    if len(sys.argv) == 1:
-        p = argparse.ArgumentParser(
-            description="proxyreaper — fast multi-protocol proxy harvester + OB2 syncer",
-            epilog="Examples:\n"
-            "  python3 proxyreaper.py --type socks5 --OB2\n"
-            "  python3 proxyreaper.py --type socks5 --OB2 --file resi.txt --skip-local --clear\n"
-            "  python3 proxyreaper.py --type socks4 --OB2 --recheck-all --check-url https://example.com/ --success-key \"Example Domain\"\n"
-            "  python3 proxyreaper.py --type socks5 --OB2 --workers 80 --bots 50 --target-count 100",
-            formatter_class=argparse.RawDescriptionHelpFormatter,
-        )
-        p.print_help()
-        sys.exit(0)
-    
+
     p = argparse.ArgumentParser(
         description="proxyreaper — fast multi-protocol proxy harvester + OB2 syncer",
         epilog="Examples:\n"
@@ -1018,7 +1030,17 @@ def main() -> None:
         "  python3 proxyreaper.py --type socks4 --OB2 --recheck-all --check-url https://example.com/ --success-key \"Example Domain\"\n"
         "  python3 proxyreaper.py --type socks5 --OB2 --workers 80 --bots 50 --target-count 100",
         formatter_class=argparse.RawDescriptionHelpFormatter,
+        add_help=False,
     )
+
+    p.add_argument("-h", "--help", action="store_true", dest="show_help", help="show this help message and exit")
+
+    # If no arguments provided, show full help and exit
+    args, _ = p.parse_known_args()
+    if args.show_help or len(sys.argv) == 1:
+        p.print_help()
+        sys.exit(0)
+
     p.add_argument("--type", default="socks5", choices=["http", "socks4", "socks5"])
     p.add_argument("--OB2", action="store_true", help="Sync + validate in OpenBullet2")
     p.add_argument("--group", default=None, help="OB2 group name (default by --type)")
@@ -1049,6 +1071,7 @@ def main() -> None:
     p.add_argument(
         "--check-url",
         default="http://example.com",
+        type=validate_url,
         help="URL OB2 hits when validating a proxy (generic; set to your target)",
     )
     p.add_argument(
@@ -1126,8 +1149,8 @@ def main() -> None:
                 workers=args.workers,
                 skip_tcp=args.skip_tcp,
                 skip_http=args.skip_http,
-                target_url="http://example.com",
-                success_key="Example Domain",
+                target_url=args.check_url,
+                success_key=args.success_key,
                 http_timeout=args.http_timeout,
                 tcp_timeout=args.tcp_timeout,
                 early_stop=early,
@@ -1269,8 +1292,8 @@ def main() -> None:
                 workers=args.workers,
                 skip_tcp=args.skip_tcp,
                 skip_http=args.skip_http,
-                target_url="http://example.com",
-                success_key="Example Domain",
+                target_url=args.check_url,
+                success_key=args.success_key,
                 http_timeout=args.http_timeout,
                 tcp_timeout=args.tcp_timeout,
                 early_stop=early,
