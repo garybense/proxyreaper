@@ -1,4 +1,3 @@
-# ProxyReaper
 
 ![ProxyReaper Banner](banner.png)
 
